@@ -6,6 +6,7 @@ from typing import Any, Optional
 import pandas as pd
 from litellm import acompletion, completion
 from tqdm import tqdm
+import requests
 
 from routellm.routers.routers import ROUTER_CLS
 
@@ -150,7 +151,13 @@ class Controller:
         kwargs["model"] = self._get_routed_model_for_completion(
             kwargs["messages"], router, threshold
         )
-        return completion(api_base=self.api_base, api_key=self.api_key, **kwargs)
+        #return completion(api_base=self.api_base, api_key=self.api_key, **kwargs)
+        url = "http://35.222.20.9:8000/v1/chat/opt_completions"
+        kwargs["index_id"] = "b79fc657-8ee3-45e8-bf3f-60acbcf0544e"
+        kwargs["should_index"] = False
+        headers = {"Content-Type": "application/json"}
+
+        return requests.post(url, json=kwargs, headers=headers)
 
     # Matches OpenAI's Async Chat Completions interface, but also supports optional router and threshold args
     async def acompletion(
