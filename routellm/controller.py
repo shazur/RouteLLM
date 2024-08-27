@@ -7,6 +7,7 @@ import pandas as pd
 from litellm import acompletion, completion
 from tqdm import tqdm
 import requests
+import aiohttp
 
 from routellm.routers.routers import ROUTER_CLS
 
@@ -159,6 +160,32 @@ class Controller:
 
         return requests.post(url, json=kwargs, headers=headers)
 
+    async def _send_request_to_vllm(self, data):
+        url = "http://localhost:8000/v1/chat/opt_completions"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=data) as response:
+                return await response.json()
+
+    def _resolve_routed_model(self, router, threshold, kwargs):
+        if "model" in kwargs:
+            router, threshold = self._parse_model_name(kwargs["model"])
+
+        self._validate_router_threshold(router, threshold)
+        kwargs["model"] = self._get_routed_model_for_completion(
+            kwargs["messages"], router, threshold
+        )
+        return kwargs
+            
+    async def opt_acompletion(
+        self,
+        *,
+        router: Optional[str] = None,
+        threshold: Optional[float] = None,
+        **kwargs,
+    ):
+        return await self._send_request_to_vllm(self._resolve_routed_model(router, threshold, kwargs))
+
     # Matches OpenAI's Async Chat Completions interface, but also supports optional router and threshold args
     async def acompletion(
         self,
@@ -167,11 +194,4 @@ class Controller:
         threshold: Optional[float] = None,
         **kwargs,
     ):
-        if "model" in kwargs:
-            router, threshold = self._parse_model_name(kwargs["model"])
-
-        self._validate_router_threshold(router, threshold)
-        kwargs["model"] = self._get_routed_model_for_completion(
-            kwargs["messages"], router, threshold
-        )
-        return await acompletion(api_base=self.api_base, api_key=self.api_key, **kwargs)
+        return await acompletion(api_base=self.api_base, api_key=self.api_key, **self._resolve_routed_model(router, threshold, kwargs))

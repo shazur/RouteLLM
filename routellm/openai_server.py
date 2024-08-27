@@ -87,6 +87,9 @@ class ChatCompletionRequest(BaseModel):
     tool_choice: Optional[str] = None
     user: Optional[str] = None
 
+class OptChatCompletionRequest(ChatCompletionRequest):
+    index_id: Optional[str] = None
+
 
 class ChatMessage(BaseModel):
     role: str
@@ -112,6 +115,51 @@ async def stream_response(response) -> AsyncGenerator:
     async for chunk in response:
         yield f"data: {chunk.model_dump_json()}\n\n"
     yield "data: [DONE]\n\n"
+
+@app.post("/v1/chat/opt_completions")
+async def create_chat_opt_completion(request: OptChatCompletionRequest):
+    # The model name field contains the parameters for routing.
+    # Model name uses format router-[router name]-[threshold] e.g. router-bert-0.7
+    # The router type and threshold is used for routing that specific request.
+    logging.info(f"Received request: {request}")
+    try:
+        res = await CONTROLLER.opt_acompletion(
+            **request.model_dump(exclude_none=True),
+        )
+    except RoutingError as e:
+        return JSONResponse(
+            ErrorResponse(message=str(e)).model_dump(),
+            status_code=400,
+        )
+
+    logging.info(CONTROLLER.model_counts)
+
+    if request.stream:
+        return StreamingResponse(
+            content=stream_response(res), media_type="text/event-stream"
+        )
+    if res['object'] == 'error':
+        return JSONResponse(
+            ErrorResponse(object=res['object'], message=res['message']).model_dump(), 
+            status_code=res['code']
+        )
+    else:
+        response = ChatCompletionResponse(
+            id=res['id'],
+            object=res['object'],
+            created=res['created'],
+            model=res['model'],
+            choices=[
+                ChatCompletionResponseChoice(
+                    index=choice['index'],
+                    message=choice['message'],
+                    finish_reason=choice['finish_reason']
+                )
+            for choice in res['choices']
+        ],
+        usage=UsageInfo(**res['usage'])
+        )
+        return JSONResponse(content=response.model_dump())
 
 
 @app.post("/v1/chat/completions")
