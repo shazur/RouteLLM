@@ -152,13 +152,7 @@ class Controller:
         kwargs["model"] = self._get_routed_model_for_completion(
             kwargs["messages"], router, threshold
         )
-        #return completion(api_base=self.api_base, api_key=self.api_key, **kwargs)
-        url = "http://35.222.20.9:8000/v1/chat/opt_completions"
-        kwargs["index_id"] = "b79fc657-8ee3-45e8-bf3f-60acbcf0544e"
-        kwargs["should_index"] = False
-        headers = {"Content-Type": "application/json"}
-
-        return requests.post(url, json=kwargs, headers=headers)
+        return completion(api_base=self.api_base, api_key=self.api_key, **kwargs)
 
     async def _send_request_to_vllm(self, data):
         url = "http://localhost:8000/v1/chat/opt_completions"
@@ -184,7 +178,11 @@ class Controller:
         threshold: Optional[float] = None,
         **kwargs,
     ):
-        return await self._send_request_to_vllm(self._resolve_routed_model(router, threshold, kwargs))
+        kwargs = self._resolve_routed_model(router, threshold, kwargs)
+        if kwargs['model'] == self.model_pair.strong:
+            return await acompletion(api_base=self.api_base, api_key=self.api_key, **kwargs)
+        else:
+            return await self._send_request_to_vllm(kwargs)
 
     # Matches OpenAI's Async Chat Completions interface, but also supports optional router and threshold args
     async def acompletion(
